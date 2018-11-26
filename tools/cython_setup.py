@@ -65,8 +65,10 @@ if MAC:
             generate_extern_c_macro_definition)
 
 
-# Constants
+# Command line args
 FAST_FLAG = False
+ENABLE_PROFILING = False
+ENABLE_LINE_TRACING = False
 
 # Cython options. Stop on first error, otherwise hundreds
 # of errors appear in the console.
@@ -80,11 +82,23 @@ def main():
     print("[cython_setup.py] Cython version: %s" % Cython.__version__)
 
     global FAST_FLAG
-    if len(sys.argv) > 1 and "--fast" in sys.argv:
+    if "--fast" in sys.argv:
         # Fast mode disables optimization flags
         print("[cython_setup.py] FAST mode enabled")
         FAST_FLAG = True
         sys.argv.remove("--fast")
+
+    global ENABLE_PROFILING
+    if "--enable-profiling" in sys.argv:
+        print("[cython_setup.py] cProfile profiling enabled")
+        ENABLE_PROFILING = True
+        sys.argv.remove("--enable-profiling")
+
+    global ENABLE_LINE_TRACING
+    if "--enable-line-tracing" in sys.argv:
+        print("[cython_setup.py] cProfile line tracing enabled")
+        ENABLE_LINE_TRACING = True
+        sys.argv.remove("--enable-line-tracing")
 
     if len(sys.argv) <= 1:
         print(__doc__)
@@ -113,11 +127,15 @@ def get_winsdk_lib():
             winsdk_libs = [
                 r"C:\\Program Files\\Microsoft SDKs\\Windows\\v7.1\\Lib",
                 r"C:\\Program Files\\Microsoft SDKs\\Windows\\v7.0\\Lib",
+                # Visual Studio 2008 installation
+                r"C:\\Program Files\\Microsoft SDKs\\Windows\\v6.0A\\Lib",
             ]
         elif ARCH64:
             winsdk_libs = [
                 r"C:\\Program Files\\Microsoft SDKs\\Windows\\v7.1\\Lib\\x64",
                 r"C:\\Program Files\\Microsoft SDKs\\Windows\\v7.0\\Lib\\x64",
+                # Visual Studio 2008 installation
+                r"C:\\Program Files\\Microsoft SDKs\\Windows\\v6.0A\\Lib\\x64",
             ]
         else:
             raise Exception("Unknown architecture")
@@ -151,9 +169,18 @@ def set_compiler_options(options):
         #   function "public: virtual bool __thiscall
         #   ClientHandler::OnProcessMessageReceived
         #
+        # /wd4305 - disable warnnings such as this:
+        #
+        #   warning C4305: '=' : truncation from 'int' to 'bool'
+        #   Code: > cdef public cpp_bool ExecutePythonCallback(...) except *:
+        #         >     return True
+        #   Discussed on cython group error 4800 which is similar to this,
+        #   but there is no other way to fix this warning:
+        #   https://groups.google.com/d/topic/cython-users/X_X0lfIBCqo/discussion
+        #
         # The above warning LNK4217 is caused by the warning below which occurs
         # when building the client_handler.lib static library:
-        extra_compile_args.extend(["/EHsc"])
+        extra_compile_args.extend(["/EHsc", "/wd4305"])
         extra_link_args.extend(["/ignore:4217"])
 
     if LINUX or MAC:
@@ -360,6 +387,9 @@ def get_libraries():
             "gobject-2.0",
             "glib-2.0",
             "gtk-x11-2.0",
+            "gdk-x11-2.0",
+            # "gdk_pixbuf-2.0",
+            # "gdk_pixbuf_xlib-2.0",
             # CEF and CEF Python libraries
             "cef_dll_wrapper",
             "cefpythonapp",
@@ -381,6 +411,8 @@ def get_ext_modules(options):
             # Any conversion to unicode must be explicit using .decode().
             "c_string_type": "bytes",
             "c_string_encoding": "utf-8",
+            "profile": ENABLE_PROFILING,
+            "linetrace": ENABLE_LINE_TRACING,
         },
 
         language="c++",

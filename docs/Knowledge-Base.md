@@ -1,10 +1,12 @@
 # Knowledge Base
 
 Table of contents:
-* [ImportError: DLL load failed (Windows)](#importerror-dll-load-failed-windows)
 * [Notifications about new releases / commits](#notifications-about-new-releases--commits)
 * [Changes in API after CEF updates](#changes-in-api-after-cef-updates)
 * [Differences between Python 2 and Python 3](#differences-between-python-2-and-python-3)
+* [How to enable debug information in examples?](#how-to-enable-debug-information-in-examples)
+* [Remote debugging with Google Chrome instance](#remote-debugging-with-google-chrome-instance)
+* [Debugging using various chrome:// protocol uris](#debugging-using-various-chrome-protocol-uris)
 * [A blank window on Mac/Linux](#a-blank-window-on-maclinux)
 * [Location of CEF framework in Mac apps](#location-of-cef-framework-in-mac-apps)
 * [Flash support](#flash-support)
@@ -12,45 +14,10 @@ Table of contents:
 * [How to capture Audio and Video in HTML5?](#how-to-capture-audio-and-video-in-html5)
 * [Touch and multi-touch support](#touch-and-multi-touch-support)
 * [Black or white browser screen](#black-or-white-browser-screen)
-* [How to enable debug information in examples?](#how-to-enable-debug-information-in-examples)
 * [Python crashes with "Segmentation fault" - how to debug?](#python-crashes-with-segmentation-fault---how-to-debug)
 * [Windows XP support](#windows-xp-support)
 * [Mac 32-bit support](#mac-32-bit-support)
 * [Security](#security)
-
-
-## ImportError: DLL load failed (Windows)
-
-If you get such an error on Windows:
-```Text
-import cefpython3
-Traceback (most recent call last):
-  File "<stdin>", line 1, in <module>
-  File "C:\Python3\lib\site-packages\cefpython3\__init__.py", line 59, in <module>
-    from . import cefpython_py36 as cefpython
-ImportError: DLL load failed: The specified module could not be found.
-```
-
-Then most probably this is caused, because you are missing
-"msvcp140.dll" dependency (for Python 3.5/3.6 for example). This
-is a dependency for Python C++ extensions (eg. cefpython_py36.pyd
-depends on it). For Python 3.5/3.6 to fix this download
-[Visual C++ Redistributable for VS2015](https://www.microsoft.com/en-us/download/details.aspx?id=52685)
-(13 MB) - this is just a VC++ redistributable, not a Visual Studio
-package. For 32-bit download "vc_redist.x86.exe" file and for
-64-bit download "vc_redist.x64.exe" file.
-
-Explanation: msvcp140.dll is the DLL for the C++ runtime library.
-This dependency is added by Cython when building CEF Python
-module. It seems that Python 3.6 only ships "vcruntime140.dll"
-which is the DLL for the C runtime library.
-
-On a side note, when using pyinstaller/py2exe tools for
-freezing application into exe then these tools should
-automatically detect the msvcp140.dll dependency and ship it
-with your application.
-
-Created [Issue #359](../../../issues/359) to track this problem.
 
 
 ## Notifications about new releases / commits
@@ -67,19 +34,15 @@ To be notified on new commits subscribe to this [RSS/Atom feed](../../../commits
 ## Changes in API after CEF updates
 
 CEF Python depends on CEF and API breaks are inevitable when updating
-to latest CEF. The [Migration Guide](Migration-guide.md) document which
-is still under works, will list most notable breaking changes since
-v31 release. Until it's done go to go to the [GitHub Releases](../../../releases)
-page and check release notes for all the releases
-that appeared between your old version and the new version. Look for
-lists named "Changes in API that break backward compatibility" or
-similar.
+to latest CEF. The [Migration Guide](Migration-guide.md) document
+lists most notable breaking changes for each release. Full chanelogs
+can be found on [GitHub Releases](../../../releases) pages.
 
-Due to unavoidable changes in API it is recommended for your setup
-scripts that use for example PIP to install the cefpython3 package,
+Due to unavoidable changes in upstream API it is recommended for your setup
+scripts, that for example use PIP to install the cefpython3 package,
 to hardcode the cefpython version string. If for example using PIP's
-requirements.txt file then list the cefpython3 package in the
-following format: `cefpython3 == 31.2`.
+`requirements.txt` file then include the cefpython3 package in the
+following format if using e.g. cefpython v57.0: `cefpython3 == 57.0`.
 
 
 ## Differences between Python 2 and Python 3
@@ -88,6 +51,101 @@ In Python 2 all cefpython strings are byte strings, but in Python 3
 they are all unicode strings. Be aware of this when porting cefpython
 based apps to Python 3, as it may cause issues.
 
+
+## How to enable debug information in examples?
+
+You can pass "--debug" command line flag to any of CEF Python
+examples and unit tests. It will also work with your app, as
+this feature is enabled in CEF Python's core. When this flag is
+passed the following settings will be set:
+```python
+settings = {
+    "debug": True,
+    "log_severity": cef.LOGSEVERITY_INFO,
+    "log_file": "debug.log",
+}
+cef.Initialize(settings=settings)
+```
+
+Now you should see debug information displayed in console like this:
+```
+[CEF Python] Initialize() called
+[CEF Python] CefExecuteProcess(): exitCode = -1
+[CEF Python] CefInitialize()
+[CEF Python] App_OnBeforeCommandLineProcessing_BrowserProcess()
+[CEF Python] Command line string for the browser process:  ...
+```
+
+
+## Remote debugging with Google Chrome instance
+
+Remote debugging is enabled by default and is configurable using
+the ApplicationSettings.[remote_debugging_port](../api/ApplicationSettings.md#remote_debugging_port) option.
+When launching app you can see in console log the random port that
+was generated:
+
+```
+DevTools listening on ws://127.0.0.1:63967/devtools/browser/c52ad9ad-bf40-47d1-b2d1-be392d536a2b
+```
+
+You can debug remotely in two ways:
+
+1. Debug with CEF devtools. Open the `http://127.0.0.1:port` url
+   (replace port with e.g. 63967 in our case) in a Google Chrome
+   browser. You will see a list of CEF browser instances running
+   which you can debug with DevTools.
+   This way of debugging has the same sets of features as opening DevTools
+   popup via `Browser.ShowDevTools` method or using the "Show DevTools"
+   option from mouse context menu in a CEF app. CEF DevTools has some
+   limits, not all features of Google Chrome DevTools do work. There
+   is another way to remotely debug that can workaround these limits,
+   see the point 2 below.
+
+2. If some features don't work when debugging with CEF devtools you can
+   use dedicated DevTools for Node in Google Chrome browser. For example
+   as of CEF v70 the devtools feature "Save as HAR file" doesn't work,
+   however it works with dedicated DevTools for Node. Follow these steps
+   to use dedicated DevTools for Node with CEF:
+
+   1. In Google Chrome browser open `chrome://inspect` url and click
+      "Open dedicated DevTools for Node"
+   2. Add `localhost:1234` connection and close the popup window
+   3. Set `ApplicationSettings.remote_debugging_port` to `1234` and
+      run your app
+   4. Refresh the `chrome://inspect` page in Google Chrome browser
+   5. You should see a new target on the Remote Target list. Click
+      "inspect" link for this target.
+
+
+## Debugging using various chrome:// protocol uris
+
+The `chrome://` protocol uris give you access to various debugging
+tools. For example if you encounter GPU issues then after the issue
+occured load the `chrome://gpu` to see a list of errors.
+
+Here is a list of supported `chrome://` protocol uris as of v55.2:
+- chrome://accessibility
+- chrome://appcache-internals
+- chrome://blob-internals
+- chrome://credits
+- chrome://gpu
+- chrome://histograms
+- chrome://indexeddb-internals
+- chrome://license
+- chrome://media-internals
+- chrome://net-export
+- chrome://net-internals
+- chrome://network-error
+- chrome://network-errors
+- chrome://resources
+- chrome://serviceworker-internals
+- chrome://system
+- chrome://tracing
+- chrome://version
+- chrome://view-http-cache
+- chrome://webrtc-internals
+- chrome://webui-hosts
+  
 
 ## A blank window on Mac/Linux
 
@@ -212,31 +270,6 @@ It will affect 2D accelerated content as well.
 Note that when web page uses WebGL then the black screen may still
 appear even after disabling GPU hardware acceleration. This is normal
 because GPU was disabled so WebGL cannot work.
-
-
-## How to enable debug information in examples?
-
-You can pass "--debug" command line flag to any of CEF Python
-examples and unit tests. It will also work with your app, as
-this feature is enabled in CEF Python's core. When this flag is
-passed the following settings will be set:
-```python
-settings = {
-    "debug": True,
-    "log_severity": cef.LOGSEVERITY_INFO,
-    "log_file": "debug.log",
-}
-cef.Initialize(settings=settings)
-```
-
-Now you should see debug information displayed in console like this:
-```
-[CEF Python] Initialize() called
-[CEF Python] CefExecuteProcess(): exitCode = -1
-[CEF Python] CefInitialize()
-[CEF Python] App_OnBeforeCommandLineProcessing_BrowserProcess()
-[CEF Python] Command line string for the browser process:  ...
-```
 
 
 ## Python crashes with "Segmentation fault" - how to debug?

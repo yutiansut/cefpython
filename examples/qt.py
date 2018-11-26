@@ -6,12 +6,12 @@
 # - PyQt 5.8.2 (qt 5.8.0) on Windows/Linux/Mac
 # - PyQt 4.10.4 / 4.11.4 (qt 4.8.6 / 4.8.7) on Windows/Linux
 # - PySide 1.2.1 (qt 4.8.6) on Windows/Linux/Mac
+# - PySide2 5.6.0, 5.11.2 (qt 5.6.2, 5.11.2) on Windows/Linux/Mac
 # - CEF Python v55.4+
 #
 # Issues with PySide 1.2:
 # - Mac: Keyboard focus issues when switching between controls (Issue #284)
 # - Mac: Mouse cursor never changes when hovering over links (Issue #311)
-# - Windows/Mac: Sometimes process hangs when quitting app (Issue #360)
 
 from cefpython3 import cefpython as cef
 import ctypes
@@ -23,6 +23,7 @@ import sys
 PYQT4 = False
 PYQT5 = False
 PYSIDE = False
+PYSIDE2 = False
 
 if "pyqt4" in sys.argv:
     PYQT4 = True
@@ -48,11 +49,24 @@ elif "pyside" in sys.argv:
     from PySide.QtGui import *
     # noinspection PyUnresolvedReferences
     from PySide.QtCore import *
+elif "pyside2" in sys.argv:
+    PYSIDE2 = True
+    # noinspection PyUnresolvedReferences
+    import PySide2
+    # noinspection PyUnresolvedReferences
+    from PySide2 import QtCore
+    # noinspection PyUnresolvedReferences
+    from PySide2.QtGui import *
+    # noinspection PyUnresolvedReferences
+    from PySide2.QtCore import *
+    # noinspection PyUnresolvedReferences
+    from PySide2.QtWidgets import *
 else:
     print("USAGE:")
     print("  qt.py pyqt4")
     print("  qt.py pyqt5")
     print("  qt.py pyside")
+    print("  qt.py pyside2")
     sys.exit(1)
 
 # Fix for PyCharm hints warnings when using static methods
@@ -77,14 +91,22 @@ if LINUX and (PYQT4 or PYSIDE):
 def main():
     check_versions()
     sys.excepthook = cef.ExceptHook  # To shutdown all CEF processes on error
-    cef.Initialize()
+    settings = {}
+    if MAC:
+        # Issue #442 requires enabling message pump on Mac
+        # in Qt example. Calling cef.DoMessageLoopWork in a timer
+        # doesn't work anymore.
+        settings["external_message_pump"] = True
+
+    cef.Initialize(settings)
     app = CefApplication(sys.argv)
     main_window = MainWindow()
     main_window.show()
     main_window.activateWindow()
     main_window.raise_()
     app.exec_()
-    app.stopTimer()
+    if not cef.GetAppSetting("external_message_pump"):
+        app.stopTimer()
     del main_window  # Just to be safe, similarly to "del app"
     del app  # Must destroy app object before calling Shutdown
     cef.Shutdown()
@@ -100,6 +122,9 @@ def check_versions():
     elif PYSIDE:
         print("[qt.py] PySide {v1} (qt {v2})".format(
               v1=PySide.__version__, v2=QtCore.__version__))
+    elif PYSIDE2:
+        print("[qt.py] PySide2 {v1} (qt {v2})".format(
+              v1=PySide2.__version__, v2=QtCore.__version__))
     # CEF Python version requirement
     assert cef.__version__ >= "55.4", "CEF Python v55.4+ required to run this"
 
@@ -108,6 +133,9 @@ class MainWindow(QMainWindow):
     def __init__(self):
         # noinspection PyArgumentList
         super(MainWindow, self).__init__(None)
+        # Avoids crash when shutting down CEF (issue #360)
+        if PYSIDE:
+            self.setAttribute(Qt.WA_DeleteOnClose, True)
         self.cef_widget = None
         self.navigation_bar = None
         if PYQT4:
@@ -116,6 +144,8 @@ class MainWindow(QMainWindow):
             self.setWindowTitle("PyQt5 example")
         elif PYSIDE:
             self.setWindowTitle("PySide example")
+        elif PYSIDE2:
+            self.setWindowTitle("PySide2 example")
         self.setFocusPolicy(Qt.StrongFocus)
         self.setupLayout()
 
@@ -137,7 +167,7 @@ class MainWindow(QMainWindow):
         frame.setLayout(layout)
         self.setCentralWidget(frame)
 
-        if PYQT5 and WINDOWS:
+        if (PYSIDE2 or PYQT5) and WINDOWS:
             # On Windows with PyQt5 main window must be shown first
             # before CEF browser is embedded, otherwise window is
             # not resized and application hangs during resize.
@@ -146,7 +176,7 @@ class MainWindow(QMainWindow):
         # Browser can be embedded only after layout was set up
         self.cef_widget.embedBrowser()
 
-        if PYQT5 and LINUX:
+        if (PYSIDE2 or PYQT5) and LINUX:
             # On Linux with PyQt5 the QX11EmbedContainer widget is
             # no more available. An equivalent in Qt5 is to create
             # a hidden window, embed CEF browser in it and then
@@ -194,7 +224,7 @@ class CefWidget(CefWidgetParent):
             self.browser.SetFocus(False)
 
     def embedBrowser(self):
-        if PYQT5 and LINUX:
+        if (PYSIDE2 or PYQT5) and LINUX:
             # noinspection PyUnresolvedReferences
             self.hidden_window = QWindow()
         window_info = cef.WindowInfo()
@@ -257,7 +287,8 @@ class CefWidget(CefWidgetParent):
 class CefApplication(QApplication):
     def __init__(self, args):
         super(CefApplication, self).__init__(args)
-        self.timer = self.createTimer()
+        if not cef.GetAppSetting("external_message_pump"):
+            self.timer = self.createTimer()
         self.setupIcon()
 
     def createTimer(self):

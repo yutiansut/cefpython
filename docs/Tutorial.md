@@ -9,7 +9,8 @@ basics. This tutorial will discuss the three featured examples:
 [hello_world.py](../examples/hello_world.py),
 [tutorial.py](../examples/tutorial.py)
 and [screenshot.py](../examples/screenshot.py). There are many
-more examples that you can find in the [README-examples.md](../examples/README-examples.md)
+more examples that you can find in the
+[README-examples.md](../examples/README-examples.md)
 file, but these examples are out of scope for this tutorial.
 
 
@@ -39,7 +40,7 @@ Run the commands below to install the cefpython3 package, clone
 the repository and run the Hello World example:
 
 ```commandline
-pip install cefpython3==57.0
+pip install cefpython3==66.0
 git clone https://github.com/cztomczak/cefpython.git
 cd cefpython/examples/
 python hello_world.py
@@ -68,10 +69,10 @@ Google website. Let's analyze the code from that example:
 1. `from cefpython3 import cefpython as cef` - Import the cefpython
    module and make a short "cef" alias
 2. `sys.excepthook = cef.ExceptHook` - Overwrite Python's default
-   exception handler so that all CEF sub-processes are terminated
-   when Python exception occurs. To understand this better read the
-   "Architecture" and "Handling Python exceptions" sections
-   further down in this Tutorial.
+   exception handler so that all CEF sub-processes are reliably
+   terminated when Python exception occurs. To understand this
+   better read the "Architecture" and "Handling Python exceptions"
+   sections further down in this Tutorial.
 3. `cef.Initialize()` - Initialize CEF. This function must be called
    somewhere in the beginning of your code. It must be called before
    any application window is created. It must be called only once
@@ -139,9 +140,9 @@ special handling. When Python exception occurs then main process
 is terminated. For CEF this means that the Browser process is
 terminated, however there may still be running CEF sub-processes
 like Renderer process, GPU process, etc. To terminate these
-sub-processes cef.[Shutdown](../api/cefpython.md#shutdown)
+sub-processes cleanly cef.[Shutdown](../api/cefpython.md#shutdown)
 must be called and if running CEF message loop then it must be
-stopped first. In all CEF Python examples you can find such
+stopped first. In most of CEF Python examples you can find such
 a line that overwrites the default exception handler in Python:
 
 ```python
@@ -159,7 +160,8 @@ The cef.ExceptHook helper function does the following:
    which exits the process with status 1, without calling
    cleanup handlers, flushing stdio buffers, etc.
 
-See CEF Python's ExceptHook source code in src/[helpers.pyx](../src/helpers.pyx).
+If you would like to modify `ExceptHook` behavior, see its source code
+in src/[helpers.pyx](../src/helpers.pyx) file.
 
 
 ## Settings
@@ -260,7 +262,7 @@ MyProduct/10.00 Safari/537.36
 ```
 
 To change the whole user agent string use the "user_agent"
-option. For example set it to "MyApp/40.00 MyProduct/10.00"
+option. For example set it to "MyAgent/20.00 MyProduct/10.00"
 and both User-Agent HTTP header and js navigator.userAgent will be:
 
 ```text
@@ -409,7 +411,8 @@ html_to_data_uri("test", js_callback_1);
 
 Python and Javascript can also communicate using http requests
 by running an internal web-server. See for example [SimpleHTTPServer](https://docs.python.org/2/library/simplehttpserver.html)
-in Python docs.
+in Python docs. In upstream CEF there is available a fast built-in
+web server and [Issue #445](../../../issues/445) is to expose its API.
 
 With http requests it is possible for synchronous
 communication from Javascript to Python by performing
@@ -431,18 +434,15 @@ however these APIs were not yet exposed to CEF Python.
 
 ## Javascript exceptions and Python exceptions
 
-There are cases when executing Javascript code may end up with
-Python exception being thrown:
+When a Python function is invoked from Javascript and it fails,
+a Python exception will be thrown. When Python executes a Javascript
+callback and it fails, a Javascript exception will be thrown.
 
-1. When a Python function is invoked from Javascript and it fails,
-   a Python exception will be thrown
-2. When Python executes a Javascript callback and it fails,
-   a Python exception will be thrown
-
-In other cases to see Javascript exceptions open Developer Tools
+To see Javascript exceptions open Developer Tools
 window using mouse context menu and switch to Console tab.
 
-There are multiple ways to catch/intercept javascript exceptions:
+There are multiple ways to intercept javascript exceptions programmaticaly
+in CEF:
 
 1. In Javascript you can register "window.onerror" event to
    catch all Javascript exceptions
@@ -683,6 +683,7 @@ official examples are provided for these. See the following
 issues in the tracker for all available packagers:
 
 * cx_Freeze - see [Issue #338](../../../issues/338)
+* Cython - see [Issue #407](../../../issues/407)
 * py2exe - see [Issue #35](../../../issues/35)
 * py2app - see [Issue #337](../../../issues/337)
 * Nuitka - see [Issue #396](../../../issues/396)

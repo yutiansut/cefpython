@@ -39,11 +39,13 @@ Table of contents:
   * [GetFrameCount](#getframecount)
   * [GetFrameIdentifiers](#getframeidentifiers)
   * [GetFrameNames](#getframenames)
+  * [GetImage](#getimage)
   * [GetJavascriptBindings](#getjavascriptbindings)
   * [GetMainFrame](#getmainframe)
   * [GetNSTextInputContext](#getnstextinputcontext)
   * [GetOpenerWindowHandle](#getopenerwindowhandle)
   * [GetOuterWindowHandle](#getouterwindowhandle)
+  * [GetSetting](#getsetting)
   * [GetUrl](#geturl)
   * [GetUserData](#getuserdata)
   * [GetWindowHandle](#getwindowhandle)
@@ -53,7 +55,9 @@ Table of contents:
   * [GoForward](#goforward)
   * [HandleKeyEventAfterTextInputClient](#handlekeyeventaftertextinputclient)
   * [HandleKeyEventBeforeTextInputClient](#handlekeyeventbeforetextinputclient)
+  * [HasDevTools](#hasdevtools)
   * [HasDocument](#hasdocument)
+  * [Invalidate](#invalidate)
   * [IsFullscreen](#isfullscreen)
   * [IsLoading](#isloading)
   * [IsMouseCursorChangeDisabled](#ismousecursorchangedisabled)
@@ -68,6 +72,7 @@ Table of contents:
   * [Reload](#reload)
   * [ReloadIgnoreCache](#reloadignorecache)
   * [ReplaceMisspelling](#replacemisspelling)
+  * [SetAutoResizeEnabled](#setautoresizeenabled)
   * [SetBounds](#setbounds)
   * [SendKeyEvent](#sendkeyevent)
   * [SendMouseClickEvent](#sendmouseclickevent)
@@ -75,6 +80,7 @@ Table of contents:
   * [SendMouseWheelEvent](#sendmousewheelevent)
   * [SendFocusEvent](#sendfocusevent)
   * [SendCaptureLostEvent](#sendcapturelostevent)
+  * [SetAccessibilityState](#setaccessibilitystate)
   * [SetClientCallback](#setclientcallback)
   * [SetClientHandler](#setclienthandler)
   * [SetFocus](#setfocus)
@@ -313,15 +319,24 @@ Calling javascript from native code synchronously is not possible in CEF 3. It i
 
 | Parameter | Type |
 | --- | --- |
-| searchID | int |
+| searchId | int |
 | searchText | string |
 | forward | bool |
 | matchCase | bool |
 | findNext | bool |
 | __Return__ | void |
 
-Search for |searchText|. |searchID| can be custom, it is so that you can  have multiple searches running simultaneously. |forward| indicates whether to search forward or backward within the page. |matchCase| indicates whether the search should be case-sensitive. |findNext| indicates whether this is the first request or a follow-up. The CefFindHandler instance, if any, returned via CefClient::GetFindHandler will be called to report find results.
+Description from upstream CEF:
 
+> Search for |searchText|. |identifier| must be a unique ID and these IDs
+> must strictly increase so that newer requests always have greater IDs than
+> older requests. If |identifier| is zero or less than the previous ID value
+> then it will be automatically assigned a new valid ID. |forward| indicates
+> whether to search forward or backward within the page. |matchCase|
+> indicates whether the search should be case-sensitive. |findNext| indicates
+> whether this is the first request or a follow-up. The CefFindHandler
+> instance, if any, returned via CefClient::GetFindHandler will be called to
+> report find results.
 
 ### GetClientCallback
 
@@ -411,6 +426,29 @@ Returns the identifiers of all existing frames.
 Returns the names of all existing frames. This list does not include the main frame.
 
 
+### GetImage
+
+| | |
+| --- | --- |
+| __Return__ | tuple(bytes buffer, int width, int height) |
+
+Currently available only on Linux (Issue [#427](../../../issues/427)).
+
+Get browser contents as image. Only screen visible contents are returned.
+
+Returns an RGB buffer which can be converted to an image
+using PIL library with such code:
+
+```py
+from PIL import Image, ImageFile
+buffer_len = (width * 3 + 3) & -4
+image = Image.frombytes("RGB", (width, height), data,
+                         "raw", "RGB", buffer_len, 1)
+ImageFile.MAXBLOCK = width * height
+image.save("image.png", "PNG")
+```
+
+
 ### GetJavascriptBindings
 
 | | |
@@ -459,6 +497,17 @@ Retrieve the CEF-internal (inner or outer) window handle of the browser that ope
 Get the most outer window handle.
 
 
+### GetSetting
+
+| Parameter | Type |
+| --- | --- |
+| key | str |
+| __Return__ | mixed |
+
+Get a browser setting. You can set browser settings by passing
+`settings` parameter to `cef.CreateBrowserSync`.
+
+
 ### GetUrl
 
 | | |
@@ -493,7 +542,8 @@ Returns an inner or outer window handle for the browser. If the browser was crea
 | --- | --- |
 | __Return__ | int |
 
-Returns the globally unique identifier for this browser.
+Returns the globally unique identifier for this browser. This value is also
+used as the tabId for extension APIs.
 
 
 ### GetZoomLevel
@@ -547,6 +597,17 @@ Handles a keyDown event prior to passing it through the NSTextInputClient
 machinery.
 
 
+### HasDevTools
+
+| | |
+| --- | --- |
+| __Return__ | bool |
+
+Description from upstream CEF:
+> Returns true if this browser currently has an associated DevTools browser.
+> Must be called on the browser process UI thread.
+
+
 ### HasDocument
 
 | | |
@@ -554,6 +615,23 @@ machinery.
 | __Return__ | bool |
 
 Returns true if a document has been loaded in the browser.
+
+
+### Invalidate
+
+| | |
+| --- | --- |
+| element_type | PaintElementType |
+| __Return__ | void |
+
+Description from upstream CEF:
+> Invalidate the view. The browser will call CefRenderHandler::OnPaint
+> asynchronously. This method is only used when window rendering is
+> disabled.
+
+`PaintElementType` enum values defined in cefpython module:
+* PET_VIEW
+* PET_POPUP
 
 
 ### IsFullscreen
@@ -701,6 +779,21 @@ If a misspelled word is currently selected in an editable node calling
 this method will replace it with the specified |word|.
 
 
+### SetAutoResizeEnabled
+
+| Parameter | Type |
+| --- | --- |
+| enabled | bool |
+| min_size | list[width, height] |
+| max_size | list[width, heifght] |
+| __Return__ | void |
+
+Description from upstream CEF:
+> Enable notifications of auto resize via CefDisplayHandler::OnAutoResize.
+> Notifications are disabled by default. |min_size| and |max_size| define the
+> range of allowed sizes.
+
+
 ### SetBounds
 
 | Parameter | Type |
@@ -809,6 +902,44 @@ Send a focus event to the browser.
 
 Send a capture lost event to the browser.
 
+
+### SetAccessibilityState
+
+| | |
+| --- | --- |
+| state | cef_state_t |
+| __Return__ | void |
+
+cef_state_t enum values defined in cefpython module:
+- STATE_DEFAULT
+- STATE_ENABLED
+- STATE_DISABLED
+
+Description from upstream CEF:
+> Set accessibility state for all frames. |accessibility_state| may be
+> default, enabled or disabled. If |accessibility_state| is STATE_DEFAULT
+> then accessibility will be disabled by default and the state may be further
+> controlled with the "force-renderer-accessibility" and
+> "disable-renderer-accessibility" command-line switches. If
+> |accessibility_state| is STATE_ENABLED then accessibility will be enabled.
+> If |accessibility_state| is STATE_DISABLED then accessibility will be
+> completely disabled.
+>
+> For windowed browsers accessibility will be enabled in Complete mode (which
+> corresponds to kAccessibilityModeComplete in Chromium). In this mode all
+> platform accessibility objects will be created and managed by Chromium's
+> internal implementation. The client needs only to detect the screen reader
+> and call this method appropriately. For example, on macOS the client can
+> handle the @"AXEnhancedUserInterface" accessibility attribute to detect
+> VoiceOver state changes and on Windows the client can handle WM_GETOBJECT
+> with OBJID_CLIENT to detect accessibility readers.
+>
+> For windowless browsers accessibility will be enabled in TreeOnly mode
+> (which corresponds to kAccessibilityModeWebContentsOnly in Chromium). In
+> this mode renderer accessibility is enabled, the full tree is computed, and
+> events are passed to CefAccessibiltyHandler, but platform accessibility
+> objects are not created. The client may implement platform accessibility
+> objects using CefAccessibiltyHandler callbacks if desired.
 
 ### SetClientCallback
 

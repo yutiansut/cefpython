@@ -107,13 +107,18 @@ Example values that can be set in Win7 DPI settings (Control Panel Appearance an
 ### background_color
 
 (int)
-Opaque background color used for accelerated content. By default the
-background color will be white. Only the RGB compontents of the specified
-value will be used. The alpha component must greater than 0 to enable use
-of the background color but will be otherwise ignored.
+Description from upstream CEF:
+> Background color used for the browser before a document is loaded and when
+> no document color is specified. The alpha component must be either fully
+> opaque (0xFF) or fully transparent (0x00). If the alpha component is fully
+> opaque then the RGB components will be used as the background color. If the
+> alpha component is fully transparent for a windowed browser then the
+> default value of opaque white be used. If the alpha component is fully
+> transparent for a windowless (off-screen) browser then transparent painting
+> will be enabled.
 
 32-bit ARGB color value, not premultiplied. The color components are always
-in a known order. Equivalent to the `SkColor` type.
+in a known order. Equivalent to the `SkColor` type in Chromium.
 
 
 ### browser_subprocess_path
@@ -180,17 +185,30 @@ Downloads are handled automatically. A default `SaveAs` file dialog provided by 
 (bool)
 Default: False
 
-EXPERIMENTAL: So far this was tested only on Linux and actually made app
-              significantly slower. Windows and Mac platforms were not
-              tested yet. Reported issue in upstream, see [Issue #246]
-              (https://github.com/cztomczak/cefpython/issues/246) for details.
+This option is for use on Mac and Linux only. On Windows for best
+performance you should use a multi-threaded message loop instead
+of calling CefDoMessageLoopWork in a timer.
+
+EXPERIMENTAL (Linux): There are issues with this option on Linux. See
+                      [Issue #246](https://github.com/cztomczak/cefpython/issues/246) 
+                      for details.
 
 It is recommended to use this option as a replacement for calls to
 cefpython.MessageLoopWork(). CEF Python will do these calls automatically
 using CEF's OnScheduleMessagePumpWork. This results in improved performance
 on Windows and Mac and resolves some bugs with missing keyboard events
-on these platforms. See [Issue #246]
-(https://github.com/cztomczak/cefpython/issues/246) for more details.
+on these platforms. See [Issue #246](https://github.com/cztomczak/cefpython/issues/246)
+for more details.
+
+IMPORTANT: Currently there are issues on Mac with both message loop work
+           and external message pump. In Qt apps calling message loop
+           work in a timer doesn't work anymore, you have to use external
+           message pump. In wxPython apps it is required to call a message
+           loop work in a timer and enable external message pump
+           both at the same time (an incorrect approach, but it works).
+           This is just a temporary solution and how this affects
+           performance was not tested. See [Issue #442](../../../issues/442)
+           for more details.
 
 Description from upstream CEF:
 > Set to true (1) to control browser process main (UI) thread message pump
@@ -233,16 +251,18 @@ RequestHandler.[_OnCertificateError()](#_oncertificateerror)
 callback. Note that disk caching is enabled only when the "cache_path"
 option is set.
 
-__NOTE ON CACHING__: the official CEF Python binary releases incorporate a patch
-that changes the caching behavior on sites with SSL certificate errors
-when used with this setting. Chromium by default disallows caching of
-content when there is certificate error. CEF Python applies a patch to
-Chromium sources to allow for caching even when there is certificate error,
-but only when the "ignore_certificate_errors" option is set to True.
+__NOTE ON CACHING__: Chromium by default disallows caching of
+content when there is certificate error. There is a issue125.patch
+in the patches/ directory that can be enabled when doing a custom
+CEF build. This patch changes the caching behavior on sites with SSL
+certificate errors when used with this setting. This patch can be
+applied Chromium sources to allow for caching even when there is
+certificate error, but only when the "ignore_certificate_errors"
+option is set to True.
 When it's set to False then the Chromium's caching behavior does not
 change. Enabling caching with certificate errors is useful on local
 private networks that use self-signed SSL certificates. See the
-referenced CEF topic in [Issue #125](../issues/125) for more details.
+referenced CEF topic in [Issue #125](../../../issues/125) for more details.
 
 
 ### javascript_flags
@@ -307,7 +327,6 @@ Accepted values - constants available in the cefpython module:
 * LOGSEVERITY_INFO
 * LOGSEVERITY_WARNING
 * LOGSEVERITY_ERROR (default)
-* LOGSEVERITY_ERROR_REPORT
 * LOGSEVERITY_DISABLE
 
 
@@ -318,6 +337,13 @@ Set to true (1) to have the browser process message loop run in a separate
 thread. If false (0) than the [cefpython](cefpython.md).MessageLoopWork()
 function must be called from your application message loop. This option is
 only supported on Windows.
+
+When this option is set to true, you don't call CEF message loop explicitilly
+anymore. Also app's main thread is no more CEF's UI thread, thus many of API
+calls will require using cef.[cefpython.md#posttask](PostTask) function to run
+code on UI thread. You should also pay attention when reading API docs, as many
+handlers/callbacks execute on specific threads, so when this option is On then
+your app's code can start executing on different threads.
 
 This option is not and cannot be supported on OS-X for architectural reasons.
 

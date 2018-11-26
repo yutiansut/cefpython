@@ -15,6 +15,7 @@
 # and Issue #284).
 
 from cefpython3 import cefpython as cef
+import ctypes
 try:
     import tkinter as tk
 except ImportError:
@@ -67,7 +68,7 @@ class MainFrame(tk.Frame):
         self.navigation_bar = None
 
         # Root
-        root.geometry("800x600")
+        root.geometry("900x640")
         tk.Grid.rowconfigure(root, 0, weight=1)
         tk.Grid.columnconfigure(root, 0, weight=1)
 
@@ -201,7 +202,9 @@ class BrowserFrame(tk.Frame):
     def on_mainframe_configure(self, width, height):
         if self.browser:
             if WINDOWS:
-                WindowUtils.OnSize(self.get_window_handle(), 0, 0, 0)
+                ctypes.windll.user32.SetWindowPos(
+                    self.browser.GetWindowHandle(), 0,
+                    0, 0, width, height, 0x0002)
             elif LINUX:
                 self.browser.SetBounds(0, 0, width, height)
             self.browser.NotifyMoveOrResizeStarted()

@@ -4,6 +4,7 @@
 
 # Common stuff for tools such as automate.py, build.py, etc.
 
+import atexit
 import glob
 import os
 import platform
@@ -11,11 +12,12 @@ import re
 import shutil
 import struct
 import sys
+import tempfile
 
 # These sample apps will be deleted when creating setup/wheel packages
 CEF_SAMPLE_APPS = ["cefclient", "cefsimple", "ceftests", "chrome-sandbox"]
 
-# Architecture and OS postfixes
+# Python architecture and OS postfixes
 ARCH32 = (8 * struct.calcsize('P') == 32)
 ARCH64 = (8 * struct.calcsize('P') == 64)
 # Make sure platform.architecture()[0] shows correctly 32bit when
@@ -25,6 +27,10 @@ if ARCH32:
 if ARCH64:
     assert platform.architecture()[0] == "64bit"
 ARCH_STR = platform.architecture()[0]
+
+# Operating system architecture
+SYSTEM64 = platform.machine().endswith('64')
+SYSTEM32 = not SYSTEM64
 
 # OS_POSTFIX is for directories/files names in cefpython sources
 #            and doesn't include architecture type, just OS name.
@@ -119,8 +125,9 @@ else:
 assert __file__
 ROOT_DIR = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 
-# API reference
+# API reference and docs
 API_DIR = os.path.join(ROOT_DIR, "api")
+DOCS_DIR = os.path.join(ROOT_DIR, "docs")
 
 # Build directories
 BUILD_DIR = os.path.join(ROOT_DIR, "build")
@@ -151,6 +158,7 @@ BUILD_SUBPROCESS = os.path.join(BUILD_CEFPYTHON,
 # -- end build directories
 
 EXAMPLES_DIR = os.path.join(ROOT_DIR, "examples")
+SNIPPETS_DIR = os.path.join(EXAMPLES_DIR, "snippets")
 SRC_DIR = os.path.join(ROOT_DIR, "src")
 
 # Subdirectories in src/
@@ -166,6 +174,25 @@ TOOLS_DIR = os.path.join(ROOT_DIR, "tools")
 INSTALLER_DIR = os.path.join(TOOLS_DIR, "installer")
 UNITTESTS_DIR = os.path.abspath(os.path.join(ROOT_DIR, "unittests"))
 # ----------------------------------------------------------------------------
+
+
+# Auto cleanup in the examples/ directory, so that build scripts
+# do not include trash directories. See Issue #432.
+
+shutil.rmtree(os.path.join(EXAMPLES_DIR, "blob_storage"),
+              ignore_errors=True)
+shutil.rmtree(os.path.join(EXAMPLES_DIR, "webrtc_event_logs"),
+              ignore_errors=True)
+shutil.rmtree(os.path.join(EXAMPLES_DIR, "webcache"),
+              ignore_errors=True)
+
+shutil.rmtree(os.path.join(SNIPPETS_DIR, "blob_storage"),
+              ignore_errors=True)
+shutil.rmtree(os.path.join(SNIPPETS_DIR, "webrtc_event_logs"),
+              ignore_errors=True)
+shutil.rmtree(os.path.join(SNIPPETS_DIR, "webcache"),
+              ignore_errors=True)
+
 
 # cefpython API header file and a fixed copy of it
 CEFPYTHON_API_HFILE = os.path.join(BUILD_CEFPYTHON,
@@ -185,30 +212,28 @@ CPP_UTILS_LIB = os.path.join(BUILD_CPP_UTILS,
 SUBPROCESS_EXE = os.path.join(BUILD_SUBPROCESS,
                               "subprocess" + EXECUTABLE_EXT)
 
-# Visual Studio constants
+# These Visual Studio constants are used by automate.py tool
+# to build upstream C++ projects. CEF Python C++ code is built
+# with setuptools/distutils in the build_cpp_projects.py tool.
+# -----------------------------------------------------------------------------
+
 VS_PLATFORM_ARG = "x86" if ARCH32 else "amd64"
 
 VS2015_VCVARS = ("C:\\Program Files (x86)\\Microsoft Visual Studio 14.0"
                  "\\VC\\vcvarsall.bat")
 
-# For CEF build
 VS2013_VCVARS = ("C:\\Program Files (x86)\\Microsoft Visual Studio 12.0"
                  "\\VC\\vcvarsall.bat")
 
-# VS2010 vcvarsall not used, using detection with setuptools instead
 VS2010_VCVARS = ("C:\\Program Files (x86)\\Microsoft Visual Studio 10.0"
                  "\\VC\\vcvarsall.bat")
 
-VS2008_VCVARS = ("%LocalAppData%\\Programs\\Common\\Microsoft"
-                 "\\Visual C++ for Python\\9.0\\vcvarsall.bat")
-VS2008_BUILD = ("%LocalAppData%\\Programs\\Common\\"
-                "Microsoft\\Visual C++ for Python\\9.0\\"
-                "VC\\bin\\amd64\\vcbuild.exe")
-if "LOCALAPPDATA" in os.environ:
-    VS2008_VCVARS = VS2008_VCVARS.replace("%LocalAppData%",
-                                          os.environ["LOCALAPPDATA"])
-    VS2008_BUILD = VS2008_BUILD.replace("%LocalAppData%",
-                                        os.environ["LOCALAPPDATA"])
+VS2008_VCVARS = ("C:\\Program Files (x86)\\Microsoft Visual Studio 9.0"
+                 "\\VC\\vcvarsall.bat")
+
+if WINDOWS and not os.path.exists(VS2008_VCVARS):
+    VS2008_VCVARS = (os.environ["LOCALAPPDATA"]+"\\Programs\\Common\\Microsoft"
+                     "\\Visual C++ for Python\\9.0\\vcvarsall.bat")
 
 # -----------------------------------------------------------------------------
 
@@ -265,8 +290,12 @@ def get_python_include_path():
     return ".\\" if WINDOWS else "./"
 
 
+g_deleted_sample_apps = []
+
+
 def delete_cef_sample_apps(caller_script, bin_dir):
     """Delete CEF sample apps to reduce package size."""
+    atexit.register(restore_cef_sample_apps, caller_script)
     for sample_app_name in CEF_SAMPLE_APPS:
         sample_app = os.path.join(bin_dir, sample_app_name + APP_EXT)
         # Not on all platforms sample apps may be available
@@ -274,16 +303,34 @@ def delete_cef_sample_apps(caller_script, bin_dir):
             print("[{script}] Delete {sample_app}"
                   .format(script=os.path.basename(caller_script),
                           sample_app=os.path.basename(sample_app)))
-            if os.path.isdir(sample_app):
-                shutil.rmtree(sample_app)
-            else:
-                os.remove(sample_app)
+            tmpdir = tempfile.mkdtemp()
+            g_deleted_sample_apps.append((bin_dir,
+                                          os.path.basename(sample_app),
+                                          tmpdir))
+            shutil.move(sample_app, tmpdir)
             # Also delete subdirs eg. cefclient_files/, ceftests_files/
             files_subdir = os.path.join(bin_dir, sample_app_name + "_files")
             if os.path.isdir(files_subdir):
-                print("[build_distrib.py] Delete directory: {dir}/"
-                      .format(dir=os.path.basename(files_subdir)))
-                shutil.rmtree(files_subdir)
+                print("[{script}] Delete directory: {dir}/"
+                      .format(script=os.path.basename(caller_script),
+                              dir=os.path.basename(files_subdir)))
+                tmpdir = tempfile.mkdtemp()
+                g_deleted_sample_apps.append((bin_dir,
+                                              os.path.basename(files_subdir),
+                                              tmpdir))
+                shutil.move(files_subdir, tmpdir)
+
+
+def restore_cef_sample_apps(caller_script):
+    for deleted in g_deleted_sample_apps:
+        bin_dir = deleted[0]
+        tmp = os.path.join(deleted[2], deleted[1])
+        print("[{script}] Restore: {path}"
+              .format(script=os.path.basename(caller_script),
+                      path=os.path.join(bin_dir, deleted[1])))
+        shutil.move(tmp, bin_dir)
+        shutil.rmtree(deleted[2])
+    del g_deleted_sample_apps[0:len(g_deleted_sample_apps)]
 
 
 def _detect_cef_binaries_libraries_dir():
@@ -423,6 +470,8 @@ def get_msvs_for_python(vs_prefix=False):
     elif sys.version_info[:2] == (3, 5):
         return "VS2015" if vs_prefix else "2015"
     elif sys.version_info[:2] == (3, 6):
+        return "VS2015" if vs_prefix else "2015"
+    elif sys.version_info[:2] == (3, 7):
         return "VS2015" if vs_prefix else "2015"
     else:
         print("ERROR: This version of Python is not supported")

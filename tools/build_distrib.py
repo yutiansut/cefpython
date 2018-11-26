@@ -20,6 +20,9 @@ Options:
                        allows to use CEF prebuilt binaries and libraries
                        downloaded from CEF Python's Github releases to
                        build distribution pacakges.
+    --allow-partial    Do not require all supported Python versions to
+                       be installed. If some are missing they just won't
+                       be included in distribution.
 
 
 This script does the following:
@@ -73,9 +76,10 @@ VERSION = ""
 NO_RUN_EXAMPLES = False
 NO_REBUILD = False
 NO_AUTOMATE = False
+ALLOW_PARTIAL = False
 
 # Python versions
-SUPPORTED_PYTHON_VERSIONS = [(2, 7), (3, 4), (3, 5), (3, 6)]
+SUPPORTED_PYTHON_VERSIONS = [(2, 7), (3, 4), (3, 5), (3, 6), (3, 7)]
 
 # Python search paths. It will use first Python found for specific version.
 # Supports replacement of one environment variable in path eg.: %ENV_KEY%.
@@ -127,28 +131,28 @@ def main():
             run_automate_prebuilt_cef(pythons_32bit[0])
         pack_prebuilt_cef("32bit")
         if LINUX:
-            reduce_package_size_issue_262("32bit")
+            reduce_package_size_issue262("32bit")
         remove_unnecessary_package_files("32bit")
     if pythons_64bit:
         if not NO_AUTOMATE:
             run_automate_prebuilt_cef(pythons_64bit[0])
         pack_prebuilt_cef("64bit")
         if LINUX:
-            reduce_package_size_issue_262("64bit")
+            reduce_package_size_issue262("64bit")
         remove_unnecessary_package_files("64bit")
     if not NO_REBUILD:
         build_cefpython_modules(pythons_32bit, "32bit")
         build_cefpython_modules(pythons_64bit, "64bit")
     if pythons_32bit:
-        make_packages(pythons_32bit[0], "32bit")
+        make_packages(pythons_32bit[0], "32bit", pythons_32bit)
     if pythons_64bit:
-        make_packages(pythons_64bit[0], "64bit")
+        make_packages(pythons_64bit[0], "64bit", pythons_64bit)
     test_wheel_packages(pythons_32bit + pythons_64bit)
     show_summary(pythons_32bit, pythons_64bit)
 
 
 def command_line_args():
-    global VERSION, NO_RUN_EXAMPLES, NO_REBUILD, NO_AUTOMATE
+    global VERSION, NO_RUN_EXAMPLES, NO_REBUILD, NO_AUTOMATE, ALLOW_PARTIAL
     version = get_version_from_command_line_args(__file__)
     if not version or "--help" in sys.argv:
         print(__doc__)
@@ -163,6 +167,9 @@ def command_line_args():
     if "--no-automate" in sys.argv:
         NO_AUTOMATE = True
         sys.argv.remove("--no-automate")
+    if "--allow-partial" in sys.argv:
+        ALLOW_PARTIAL = True
+        sys.argv.remove("--allow-partial")
     args = sys.argv[1:]
     for arg in args:
         if arg == version:
@@ -192,6 +199,28 @@ def clean_build_directories():
 
     # Delete cef binaries and libraries dirs
     if not NO_AUTOMATE:
+        # Delete cef binlib dir only if cef_binary dir exists,
+        # otherwise you will end up with cef binlib directory
+        # deleted and script failing further when calling
+        # automate.py --prebuilt-cef.
+        version = get_cefpython_version()
+        # 32-bit
+        if not MAC:
+            postfix2 = get_cef_postfix2_for_arch("32bit")
+            cef_binary_dir = "cef_binary_{cef_version}_{postfix2}"\
+                             .format(cef_version=version["CEF_VERSION"],
+                                     postfix2=postfix2)
+            if len(glob.glob(cef_binary_dir)) != 1:
+                raise Exception("Directory not found: "+cef_binary_dir)
+        # 64-bit
+        postfix2 = get_cef_postfix2_for_arch("64bit")
+        cef_binary_dir = "cef_binary_{cef_version}_windows64"\
+                         .format(cef_version=version["CEF_VERSION"],
+                                 postfix2=postfix2)
+        if len(glob.glob(cef_binary_dir)) != 1:
+            raise Exception("Directory not found: "+cef_binary_dir)
+
+        # Delete
         delete_cef_binaries_libraries_dir("32bit")
         delete_cef_binaries_libraries_dir("64bit")
 
@@ -295,7 +324,8 @@ def check_pythons(pythons_32bit, pythons_64bit):
     if pythons_32bit:
         print("[build_distrib.py] Pythons 32-bit found:")
         pp.pprint(pythons_32bit)
-    if check_32bit and len(pythons_32bit) != len(SUPPORTED_PYTHON_VERSIONS):
+    if check_32bit and len(pythons_32bit) != len(SUPPORTED_PYTHON_VERSIONS) \
+            and not ALLOW_PARTIAL:
         print("[build_distrib.py] ERROR: Couldn't find all supported"
               " python 32-bit installations. Found: {found}."
               .format(found=len(pythons_32bit)))
@@ -303,7 +333,8 @@ def check_pythons(pythons_32bit, pythons_64bit):
     if pythons_64bit:
         print("[build_distrib.py] Pythons 64-bit found:")
         pp.pprint(pythons_64bit)
-    if check_64bit and len(pythons_64bit) != len(SUPPORTED_PYTHON_VERSIONS):
+    if check_64bit and len(pythons_64bit) != len(SUPPORTED_PYTHON_VERSIONS) \
+            and not ALLOW_PARTIAL:
         print("[build_distrib.py] ERROR: Couldn't find all supported"
               " python 64-bit installations. Found: {found}."
               .format(found=len(pythons_64bit)))
@@ -423,7 +454,7 @@ def zip_directory(path, base_path, archive):
     os.chdir(original_dir)
 
 
-def reduce_package_size_issue_262(arch):
+def reduce_package_size_issue262(arch):
     """Linux only: libcef.so is huge (500 MB) in Chrome v54+. Issue #262."""
     print("[build_distrib.py] Reduce package size for {arch} (Issue #262)"
           .format(arch=arch))
@@ -524,7 +555,7 @@ def restore_subprocess_executable_issue342(arch):
     shutil.copy(src, dst)
 
 
-def make_packages(python, arch):
+def make_packages(python, arch, all_pythons):
     """Make setup and wheel packages."""
     print("[build_distrib.py] Make setup package for {arch}..."
           .format(arch=arch))
@@ -547,6 +578,7 @@ def make_packages(python, arch):
     setup_basename = get_setup_installer_basename(
             VERSION, get_os_postfix2_for_arch(arch))
     setup_dir = os.path.join(BUILD_DIR, setup_basename)
+    check_cpp_extension_dependencies_issue359(setup_dir, all_pythons)
     archive = pack_directory(setup_dir, BUILD_DIR)
     shutil.move(archive, DISTRIB_DIR)
 
@@ -572,6 +604,31 @@ def make_packages(python, arch):
     print("[build_distrib.py] Delete setup directory: {setup_dir}/"
           .format(setup_dir=os.path.basename(setup_dir)))
     shutil.rmtree(setup_dir)
+
+
+def check_cpp_extension_dependencies_issue359(setup_dir, all_pythons):
+    """Windows only: check if msvcpXX.dll exist for all Python versions.
+    Issue #359."""
+    if not WINDOWS:
+        return
+    checked_any = False
+    for python in all_pythons:
+        if python["version2"] in ((3, 5), (3, 6), (3, 7)):
+            checked_any = True
+            if not os.path.exists(os.path.join(setup_dir, "cefpython3",
+                                               "msvcp140.dll")):
+                raise Exception("C++ ext dependency missing: msvcp140.dll")
+        elif python["version2"] == (3, 4):
+            checked_any = True
+            if not os.path.exists(os.path.join(setup_dir, "cefpython3",
+                                               "msvcp100.dll")):
+                raise Exception("C++ ext dependency missing: msvcp100.dll")
+        elif python["version2"] == (2, 7):
+            if not os.path.exists(os.path.join(setup_dir, "cefpython3",
+                                               "msvcp90.dll")):
+                raise Exception("C++ ext dependency missing: msvcp90.dll")
+            checked_any = True
+    assert checked_any
 
 
 def test_wheel_packages(pythons):
@@ -602,7 +659,7 @@ def test_wheel_packages(pythons):
         command = ("\"{python}\" {unittests}"
                    .format(python=python["executable"],
                            unittests=os.path.join(UNITTESTS_DIR,
-                                                  "main_test.py")))
+                                                  "_test_runner.py")))
         pcode = subprocess.call(command, cwd=DISTRIB_DIR, shell=True)
         if pcode != 0:
             print("[build_distrib.py] ERROR: Unit tests failed for"

@@ -15,9 +15,9 @@ Table of contents:
   * [default_encoding](#default_encoding)
   * [dom_paste_disabled](#dom_paste_disabled)
   * [file_access_from_file_urls_allowed](#file_access_from_file_urls_allowed)
+  * [inherit_client_handlers_for_popups](#inherit_client_handlers_for_popups)
   * [image_load_disabled](#image_load_disabled)
   * [javascript_disabled](#javascript_disabled)
-  * [javascript_open_windows_disallowed](#javascript_open_windows_disallowed)
   * [javascript_close_windows_disallowed](#javascript_close_windows_disallowed)
   * [javascript_access_clipboard_disallowed](#javascript_access_clipboard_disallowed)
   * [local_storage_disabled](#local_storage_disabled)
@@ -77,11 +77,18 @@ empty then "en-US,en" will be used.
 ### background_color
 
 (int)
-Opaque background color used for the browser before a document is loaded
-and when no document color is specified. By default the background color
-will be the same as CefSettings.background_color. Only the RGB compontents
-of the specified value will be used. The alpha component must greater than
-0 to enable use of the background color but will be otherwise ignored.
+Description from upstream CEF:
+> Background color used for the browser before a document is loaded and when
+> no document color is specified. The alpha component must be either fully
+> opaque (0xFF) or fully transparent (0x00). If the alpha component is fully
+> opaque then the RGB components will be used as the background color. If the
+> alpha component is fully transparent for a windowed browser then the
+> CefSettings.background_color value will be used. If the alpha component is
+> fully transparent for a windowless (off-screen) browser then transparent
+> painting will be enabled.
+
+32-bit ARGB color value, not premultiplied. The color components are always
+in a known order. Equivalent to the `SkColor` type in Chromium.
 
 
 ### databases_disabled
@@ -104,6 +111,21 @@ of the specified value will be used. The alpha component must greater than
 (bool) Controls whether file URLs will have access to other file URLs. Also configurable using the --allow-access-from-files switch. Other similar switches are: --allow-file-access and --allow-file-access-from-files.
 
 
+### inherit_client_handlers_for_popups
+
+
+(bool) Default: True.
+
+Whether to inherit client handlers and callbacks for popup windows
+opened with "window.open". For example when you set a handler using
+`browser.SetClientHandler` then this handler will also be resued
+for popup windows that are created implicitilly via "window.open"
+call in javascript or similar. If you implement
+`LifespanHandler.OnBeforePopup` then you can control explicitilly
+what handlers are set for the popup browser. To disable the default
+behavior set this option to False.
+
+
 ### image_load_disabled
 
 (bool) Controls whether image URLs will be loaded from the network. A cached image will still be rendered if requested. Also configurable using the --disable-image-loading switch.
@@ -112,11 +134,6 @@ of the specified value will be used. The alpha component must greater than
 ### javascript_disabled
 
 (bool) Controls whether Javascript can be executed. Also configurable using the --disable-javascript switch.
-
-
-### javascript_open_windows_disallowed
-
-(bool) Controls whether Javascript can be used for opening windows. Also configurable using the --disable-javascript-open-windows switch.
 
 
 ### javascript_close_windows_disallowed

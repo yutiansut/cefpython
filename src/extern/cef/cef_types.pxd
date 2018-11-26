@@ -78,7 +78,6 @@ cdef extern from "include/internal/cef_types.h":
         cef_string_t default_encoding
         cef_state_t remote_fonts
         cef_state_t javascript
-        cef_state_t javascript_open_windows
         cef_state_t javascript_close_windows
         cef_state_t javascript_access_clipboard
         cef_state_t javascript_dom_paste
@@ -116,6 +115,7 @@ cdef extern from "include/internal/cef_types.h":
     ctypedef enum cef_log_severity_t:
         LOGSEVERITY_DEFAULT,
         LOGSEVERITY_VERBOSE,
+        LOGSEVERITY_DEBUG = LOGSEVERITY_VERBOSE,
         LOGSEVERITY_INFO,
         LOGSEVERITY_WARNING,
         LOGSEVERITY_ERROR,
@@ -123,11 +123,10 @@ cdef extern from "include/internal/cef_types.h":
 
     ctypedef enum cef_thread_id_t:
         TID_UI,
-        TID_DB,
+        TID_FILE_BACKGROUND
         TID_FILE,
+        TID_FILE_USER_VISIBLE,
         TID_FILE_USER_BLOCKING,
-        TID_PROCESS_LAUNCHER,
-        TID_CACHE,
         TID_IO,
         TID_RENDERER
 
@@ -162,12 +161,14 @@ cdef extern from "include/internal/cef_types.h":
         
     # WebRequest
     ctypedef enum cef_urlrequest_flags_t:
-        UR_FLAG_NONE                      = 0,
-        UR_FLAG_SKIP_CACHE                = 1 << 0,
-        UR_FLAG_ALLOW_CACHED_CREDENTIALS  = 1 << 1,
-        UR_FLAG_REPORT_UPLOAD_PROGRESS    = 1 << 3,
-        UR_FLAG_NO_DOWNLOAD_DATA          = 1 << 6,
-        UR_FLAG_NO_RETRY_ON_5XX           = 1 << 7,
+        UR_FLAG_NONE = 0,
+        UR_FLAG_SKIP_CACHE = 1 << 0,
+        UR_FLAG_ONLY_FROM_CACHE = 1 << 1,
+        UR_FLAG_ALLOW_STORED_CREDENTIALS = 1 << 2,
+        UR_FLAG_REPORT_UPLOAD_PROGRESS = 1 << 3,
+        UR_FLAG_NO_DOWNLOAD_DATA = 1 << 4,
+        UR_FLAG_NO_RETRY_ON_5XX = 1 << 5,
+        UR_FLAG_STOP_ON_REDIRECT = 1 << 6,
 
     # CefListValue, CefDictionaryValue - types.
     ctypedef enum cef_value_type_t:
@@ -343,6 +344,7 @@ cdef extern from "include/internal/cef_types.h":
         PK_FILE_MODULE,
         PK_LOCAL_APP_DATA,
         PK_USER_DATA,
+        PK_DIR_RESOURCES,
     ctypedef cef_path_key_t PathKey
 
     ctypedef enum cef_plugin_policy_t:
@@ -375,3 +377,7 @@ cdef extern from "include/internal/cef_types.h":
     ctypedef enum cef_focus_source_t:
         FOCUS_SOURCE_NAVIGATION,
         FOCUS_SOURCE_SYSTEM,
+
+    cdef cppclass CefRange:
+        int from_val "from"
+        int to_val "to"

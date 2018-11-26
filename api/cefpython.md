@@ -13,19 +13,23 @@ Table of contents:
   * [ExceptHook](#excepthook)
   * [GetAppSetting](#getappsetting)
   * [GetAppPath](#getapppath)
+  * [GetBrowserByIdentifier](#getbrowserbyidentifier)
   * [GetBrowserByWindowHandle](#getbrowserbywindowhandle)
   * [GetCommandLineSwitch](#getcommandlineswitch)
+  * [GetDataUrl](#getdataurl)
   * [GetGlobalClientCallback](#getglobalclientcallback)
   * [GetModuleDirectory](#getmoduledirectory)
   * [GetVersion](#getversion)
   * [Initialize](#initialize)
   * [IsThread](#isthread)
+  * [LoadCrlSetsFile](#loadcrlsetsfile)
   * [MessageLoop](#messageloop)
   * [MessageLoopWork](#messageloopwork)
   * [PostTask](#posttask)
   * [PostDelayedTask](#postdelayedtask)
   * [QuitMessageLoop](#quitmessageloop)
   * [SetGlobalClientCallback](#setglobalclientcallback)
+  * [SetGlobalClientHandler](#setglobalclienthandler)
   * [SetOsModalLoop](#setosmodalloop)
   * [Shutdown](#shutdown)
 
@@ -62,7 +66,8 @@ any third party GUI framework for creation of top-level window.
 
 After the call to CreateBrowserSync() the page is not yet loaded,
 if you want your next lines of code to do some stuff on the
-webpage you will have to implement LoadHandler.[OnLoadingStateChange]((LoadHandler.md#onloadingstatechange))
+webpage you will have to implement
+LoadHandler.[OnLoadingStateChange](LoadHandler.md#onloadingstatechange)
 callback.
 
 
@@ -106,6 +111,17 @@ to Initialize(). Returns None if key is not found.
 Get path to where application resides.
 
 
+### GetBrowserByIdentifier
+
+| Parameter | Type |
+| --- | --- |
+| identifier | int |
+| __Return__ | void |
+
+Get browser by identifier. Browser identifier can be obtained by
+calling `Browser.GetIdentifier`.
+
+
 ### GetBrowserByWindowHandle
 
 | Parameter | Type |
@@ -126,6 +142,20 @@ Get browser by outer or inner window handle. An outer window handle is the one t
 Returns the [CommandLineSwitches](CommandLineSwitches.md) switch that was passed to Initialize(). Returns None if key is not found.
 
 
+### GetDataUrl
+
+| Parameter | Type |
+| --- | --- |
+| data | string |
+| mediatype="html" (optional) | string |
+| __Return__ | object |
+
+Convert data to a Data URL. Only "html" media type is currently supported.
+
+See:
+https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/Data_URIs
+
+
 ### GetGlobalClientCallback
 
 | Parameter | Type |
@@ -133,7 +163,8 @@ Returns the [CommandLineSwitches](CommandLineSwitches.md) switch that was passed
 | name | string |
 | __Return__ | object |
 
-Returns a global client callback that was set using SetGlobalClientCallback(). Returns None if callback was not set.
+Returns a global client callback that was set using SetGlobalClientCallback()
+or SetGlobalClientHandler. Returns None if callback was not set.
 
 
 ### GetModuleDirectory
@@ -184,6 +215,22 @@ Returns true if called on the specified thread.
 CEF maintains multiple internal threads that are used for handling different types of tasks. The UI thread creates the browser window and is used for all interaction with the webkit rendering engine and V8 Javascript engine. The UI thread will be the same as the main application thread if CefInitialize() is called with an [ApplicationSettings](ApplicationSettings.md) 'multi_threaded_message_loop' option set to false. The IO thread is used for handling schema and network requests. The FILE thread is used for the application cache and other miscellaneous activities.
 
 See PostTask() for a list of threads.
+
+
+### LoadCrlSetsFile
+
+| Parameter | Type |
+| --- | --- |
+| path | bytes |
+| __Return__ | bool |
+
+Description from upstream CEF:
+> Loads the existing "Certificate Revocation Lists" file that is managed by
+> Google Chrome. This file can generally be found in Chrome's User Data
+> directory (e.g. "C:\Users\[User]\AppData\Local\Google\Chrome\User Data\" on
+> Windows) and is updated periodically by Chrome's component updater service.
+> Must be called in the browser process after the context has been initialized.
+> See https://dev.chromium.org/Home/chromium-security/crlsets for background.
 
 
 ### MessageLoop
@@ -237,19 +284,18 @@ Description from upstream CEF:
 
 Post a task for execution on the thread associated with this task runner. Execution will occur asynchronously. Only Browser process threads are allowed.
 
-An example usage is in the wxpython.py example on Windows, in implementation of LifespanHandler.OnBeforePopup().
-
 List of threads in the Browser process:
-* cef.TID_UI: The main thread in the browser. This will be the same as the main application thread if cefpython.Initialize() is called with a ApplicationSettings.multi_threaded_message_loop value of false.
-* cef.TID_DB: Used to interact with the database.
-* cef.TID_FILE: Used to interact with the file system.
-* cef.TID_FILE_USER_BLOCKING: Used for file system operations that block user interactions. Responsiveness of this thread affects users.
-* cef.TID_PROCESS_LAUNCHER: Used to launch and terminate browser processes.
-* cef.TID_CACHE: Used to handle slow HTTP cache operations.
-* cef.TID_IO: Used to process IPC and network messages.
+* cef.TID_UI: The main thread in the browser. This will be the same as the main application thread if cefpython.Initialize() is called with a ApplicationSettings.multi_threaded_message_loop value of false. Do not perform blocking tasks on this thread. All tasks posted after CefBrowserProcessHandler::OnContextInitialized() and before CefShutdown() are guaranteed to run. This thread will outlive all other CEF threads.
+* cef.TID_FILE (alias cef.TID_FILE_BACKGROUND): Used for blocking tasks (e.g. file system access) where the user won't notice if the task takes an arbitrarily long time to complete. All tasks posted after CefBrowserProcessHandler::OnContextInitialized() and before CefShutdown() are guaranteed to run.
+* cef.TID_FILE_USER_VISIBLE: Used for blocking tasks (e.g. file system access) that affect UI or responsiveness of future user interactions. Do not use if an immediate response to a user interaction is expected. All tasks posted after CefBrowserProcessHandler::OnContextInitialized() and before CefShutdown() are guaranteed to run. Examples:
+  - Updating the UI to reflect progress on a long task.
+  - Loading data that might be shown in the UI after a future user
+    interaction.
+* cef.TID_FILE_USER_BLOCKING: Used for blocking tasks (e.g. file system access) that affect UI immediately after a user interaction. All tasks posted after CefBrowserProcessHandler::OnContextInitialized() and before CefShutdown() are guaranteed to run. Example: Generating data shown in the UI immediately after a click.
+* cef.TID_IO: Used to process IPC and network messages. Do not perform blocking tasks on this thread. All tasks posted after CefBrowserProcessHandler::OnContextInitialized() and before CefShutdown() are guaranteed to run.
 
 List of threads in the Renderer process:
-* cef.TID_RENDERER: The main thread in the renderer. Used for all webkit and V8 interaction.
+* cef.TID_RENDERER: Tasks may be posted to this thread after CefRenderProcessHandler::OnRenderThreadCreated but are not guaranteed to run before sub-process termination (sub-processes may be killed at any time without warning).
 
 
 ### PostDelayedTask
@@ -289,6 +335,23 @@ Current CEF Python implementation is limited in handling callbacks that occur du
 Some client callbacks are not associated with any browser. In such case use this function instead of the SetClientCallback() and SetClientHandler() [Browser](Browser.md) methods. An example of such callback is OnCertificateError() in [RequestHandler](RequestHandler.md).
 
 Example of using SetGlobalClientCallback() is provided in the wxpython.py example.
+
+
+### SetGlobalClientHandler
+
+| Parameter | Type |
+| --- | --- |
+| handler | object |
+| __Return__ | void |
+
+Set client handler object (class instance). Its members will be inspected.
+Private methods that are not meant to be callbacks should have their names
+prepended with two underscores. Methods with single underscore or no
+underscore are treated the same as client callbacks.
+
+You can call this method multiple times to set many handlers. For
+example you can create in your code several objects named AccessibilityHandler,
+RequestHandler etc.
 
 
 ### SetOsModalLoop

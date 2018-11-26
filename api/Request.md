@@ -95,9 +95,10 @@ Set the request method type.
 | --- | --- |
 | __Return__ | list/dict |
 
-Get the post data. If the form content type is "multipart/form-data"
-then the post data will be returned as a list. If the form content
-type is "application/x-www-form-urlencoded" then the post data will
+Get the post data. All strings are byte strings. If the form content
+type is "multipart/form-data" then the post data will be returned
+as a list. If the form content type is
+"application/x-www-form-urlencoded" then the post data will
 be returned as a dict.
 
 
@@ -108,8 +109,8 @@ be returned as a dict.
 | postData | list/dict |
 | __Return__ | void |
 
-Set the post data. See GetPostData() for an explanation of the
-postData type.
+Set the post data. All strings are expected to be byte strings.
+See GetPostData() for an explanation of the postData type.
 
 ### GetHeaderMap
 
@@ -166,15 +167,20 @@ be removed and ignored.
 
 Get the flags used in combination with WebRequest.
 
-Available flags (access via `cefpython.Request.Flags["xxx"]`):
+Available flags below. Can be accessed via `cefpython.Request.Flags["xxx"]`.
+These flags are also defined as constants starting with "UR_FLAG_"
+in the cefpython module.requ
 
 * **None** - Default behavior.
-* **SkipCache** - If set the cache will be skipped when handling the request.
-* **AllowCachedCredentials** - If set user name, password, and cookies may be
-      sent with the request, and cookies may be saved from the response.
+* **SkipCache** - If set the cache will be skipped when handling the request. Setting this value is equivalent to specifying the "Cache-Control: no-cache" request header. Setting this value in combination with UR_FLAG_ONLY_FROM_CACHE will cause the request to fail.
+* **OnlyFromCache** - If set the request will fail if it cannot be served from the cache (or some equivalent local store). Setting this value is equivalent to specifying the "Cache-Control: only-if-cached" request header. Setting this value in combination with UR_FLAG_SKIP_CACHE will cause the request to fail.
+* **AllowStoredCredentials** - If set user name, password, and cookies may be sent with the request, and cookies may be saved from the response.
 * **ReportUploadProgress** - If set upload progress events will be generated when a request has a body.
 * **NoDownloadData** - If set the [WebRequestClient](WebRequestClient.md)::`OnDownloadData` method will not be called.
 * **NoRetryOn5xx** - If set 5xx redirect errors will be propagated to the observer instead of automatically re-tried. This currently only applies for requests originated in the browser process.
+* **StopOnRedirect** - If set 3XX responses will cause the fetch to halt immediately rather than continue through the redirect.
+
+
 
 
 ### SetFlags
@@ -185,6 +191,7 @@ Available flags (access via `cefpython.Request.Flags["xxx"]`):
 | __Return__ | void |
 
 Set the flags used in combination with [WebRequest](WebRequest.md).
+See GetFlags() for possible values.
 
 
 ### GetFirstPartyForCookies

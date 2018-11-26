@@ -24,6 +24,15 @@ Usage:
 Tested configurations:
 - CEF Python v57.0+
 - Pillow 2.3.0 / 4.1.0
+
+NOTE: There are limits in Chromium on viewport size. For some
+      websites with huge viewport size it won't work. In such
+      case it is required to reduce viewport size to an usual
+      size of a window and perform scrolling programmatically
+      using javascript while making a screenshot for each of
+      the scrolled region. Then at the end combine all the
+      screenshots into one. To force a paint event in OSR
+      mode call cef.Invalidate().
 """
 
 from cefpython3 import cefpython as cef
@@ -34,7 +43,7 @@ import sys
 
 try:
     from PIL import Image, PILLOW_VERSION
-except:
+except ImportError:
     print("[screenshot.py] Error: PIL module not available. To install"
           " type: pip install Pillow")
     sys.exit(1)
@@ -55,9 +64,26 @@ def main():
         os.remove(SCREENSHOT_PATH)
     command_line_arguments()
     # Off-screen-rendering requires setting "windowless_rendering_enabled"
-    # option, so that RenderHandler callbacks are called.
-    cef.Initialize(settings={"windowless_rendering_enabled": True})
-    create_browser()
+    # option.
+    settings = {
+        "windowless_rendering_enabled": True,
+    }
+    switches = {
+        # GPU acceleration is not supported in OSR mode, so must disable
+        # it using these Chromium switches (Issue #240 and #463)
+        "disable-gpu": "",
+        "disable-gpu-compositing": "",
+        # Tweaking OSR performance by setting the same Chromium flags
+        # as in upstream cefclient (Issue #240).
+        "enable-begin-frame-scheduling": "",
+        "disable-surfaces": "",  # This is required for PDF ext to work
+    }
+    browser_settings = {
+        # Tweaking OSR performance (Issue #240)
+        "windowless_frame_rate": 30,  # Default frame rate in CEF is 30
+    }
+    cef.Initialize(settings=settings, switches=switches)
+    create_browser(browser_settings)
     cef.MessageLoop()
     cef.Shutdown()
     print("[screenshot.py] Opening screenshot with default application")
@@ -65,9 +91,13 @@ def main():
 
 
 def check_versions():
-    print("[screenshot.py] CEF Python {ver}".format(ver=cef.__version__))
+    ver = cef.GetVersion()
+    print("[screenshot.py] CEF Python {ver}".format(ver=ver["version"]))
+    print("[screenshot.py] Chromium {ver}".format(ver=ver["chrome_version"]))
+    print("[screenshot.py] CEF {ver}".format(ver=ver["cef_version"]))
     print("[screenshot.py] Python {ver} {arch}".format(
-          ver=platform.python_version(), arch=platform.architecture()[0]))
+           ver=platform.python_version(),
+           arch=platform.architecture()[0]))
     print("[screenshot.py] Pillow {ver}".format(ver=PILLOW_VERSION))
     assert cef.__version__ >= "57.0", "CEF Python v57.0+ required to run this"
 
@@ -95,7 +125,7 @@ def command_line_arguments():
         sys.exit(1)
 
 
-def create_browser():
+def create_browser(settings):
     # Create browser in off-screen-rendering mode (windowless mode)
     # by calling SetAsOffscreen method. In such mode parent window
     # handle can be NULL (0).
@@ -107,6 +137,7 @@ def create_browser():
     print("[screenshot.py] Loading url: {url}"
           .format(url=URL))
     browser = cef.CreateBrowserSync(window_info=window_info,
+                                    settings=settings,
                                     url=URL)
     browser.SetClientHandler(LoadHandler())
     browser.SetClientHandler(RenderHandler())
@@ -201,8 +232,8 @@ class RenderHandler(object):
             # reasons it would be better not to copy this string.
             # I think that Python makes a copy of that string when
             # passing it to SetUserData.
-            buffer_string = paint_buffer.GetString(mode="rgba",
-                                                   origin="top-left")
+            buffer_string = paint_buffer.GetBytes(mode="rgba",
+                                                  origin="top-left")
             # Browser object provides GetUserData/SetUserData methods
             # for storing custom data associated with browser.
             browser.SetUserData("OnPaint.buffer_string", buffer_string)
